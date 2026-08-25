@@ -6,6 +6,7 @@ import {
   createApprovalSchema,
   createIssueInputSchema,
   issueThreadInteractionContinuationPolicySchema,
+  requestCheckboxConfirmationPayloadSchema,
   requestConfirmationPayloadSchema,
   suggestTasksPayloadSchema,
   updateIssueSchema,
@@ -18,7 +19,7 @@ import { formatErrorResponse, formatTextResponse } from "./format.js";
 export interface ToolDefinition {
   name: string;
   description: string;
-  schema: z.AnyZodObject;
+  schema: z.ZodObject;
   execute: (input: Record<string, unknown>) => Promise<{
     content: Array<{ type: "text"; text: string }>;
   }>;
@@ -50,35 +51,36 @@ function parseOptionalJson(raw: string | undefined | null): unknown {
   return JSON.parse(raw);
 }
 
-const companyIdOptional = z.string().uuid().optional().nullable();
-const agentIdOptional = z.string().uuid().optional().nullable();
+const companyIdOptional = z.string().guid().optional().nullable();
+const agentIdOptional = z.string().guid().optional().nullable();
 const issueIdSchema = z.string().min(1);
 const projectIdSchema = z.string().min(1);
-const goalIdSchema = z.string().uuid();
-const approvalIdSchema = z.string().uuid();
+const goalIdSchema = z.string().guid();
+const approvalIdSchema = z.string().guid();
 const documentKeySchema = z.string().trim().min(1).max(64);
 
 const listIssuesSchema = z.object({
   companyId: companyIdOptional,
   status: z.string().optional(),
-  projectId: z.string().uuid().optional(),
-  assigneeAgentId: z.string().uuid().optional(),
-  participantAgentId: z.string().uuid().optional(),
+  projectId: z.string().guid().optional(),
+  assigneeAgentId: z.string().guid().optional(),
+  participantAgentId: z.string().guid().optional(),
   assigneeUserId: z.string().optional(),
   touchedByUserId: z.string().optional(),
   inboxArchivedByUserId: z.string().optional(),
   unreadForUserId: z.string().optional(),
-  labelId: z.string().uuid().optional(),
-  executionWorkspaceId: z.string().uuid().optional(),
+  labelId: z.string().guid().optional(),
+  executionWorkspaceId: z.string().guid().optional(),
   originKind: z.string().optional(),
   originId: z.string().optional(),
   includeRoutineExecutions: z.boolean().optional(),
+  includeLiveDescendantSummary: z.boolean().optional(),
   q: z.string().optional(),
 });
 
 const listCommentsSchema = z.object({
   issueId: issueIdSchema,
-  after: z.string().uuid().optional(),
+  after: z.string().guid().optional(),
   order: z.enum(["asc", "desc"]).optional(),
   limit: z.number().int().positive().max(500).optional(),
 });
@@ -90,7 +92,7 @@ const upsertDocumentToolSchema = z.object({
   format: z.enum(["markdown"]).default("markdown"),
   body: z.string().max(524288),
   changeSummary: z.string().trim().max(500).nullable().optional(),
-  baseRevisionId: z.string().uuid().nullable().optional(),
+  baseRevisionId: z.string().guid().nullable().optional(),
 });
 
 const createIssueToolSchema = z.object({
@@ -114,8 +116,8 @@ const addCommentToolSchema = z.object({
 const createSuggestTasksToolSchema = z.object({
   issueId: issueIdSchema,
   idempotencyKey: z.string().trim().max(255).nullable().optional(),
-  sourceCommentId: z.string().uuid().nullable().optional(),
-  sourceRunId: z.string().uuid().nullable().optional(),
+  sourceCommentId: z.string().guid().nullable().optional(),
+  sourceRunId: z.string().guid().nullable().optional(),
   title: z.string().trim().max(240).nullable().optional(),
   summary: z.string().trim().max(1000).nullable().optional(),
   continuationPolicy: issueThreadInteractionContinuationPolicySchema.optional().default("wake_assignee"),
@@ -125,8 +127,8 @@ const createSuggestTasksToolSchema = z.object({
 const createAskUserQuestionsToolSchema = z.object({
   issueId: issueIdSchema,
   idempotencyKey: z.string().trim().max(255).nullable().optional(),
-  sourceCommentId: z.string().uuid().nullable().optional(),
-  sourceRunId: z.string().uuid().nullable().optional(),
+  sourceCommentId: z.string().guid().nullable().optional(),
+  sourceRunId: z.string().guid().nullable().optional(),
   title: z.string().trim().max(240).nullable().optional(),
   summary: z.string().trim().max(1000).nullable().optional(),
   continuationPolicy: issueThreadInteractionContinuationPolicySchema.optional().default("wake_assignee"),
@@ -136,12 +138,23 @@ const createAskUserQuestionsToolSchema = z.object({
 const createRequestConfirmationToolSchema = z.object({
   issueId: issueIdSchema,
   idempotencyKey: z.string().trim().max(255).nullable().optional(),
-  sourceCommentId: z.string().uuid().nullable().optional(),
-  sourceRunId: z.string().uuid().nullable().optional(),
+  sourceCommentId: z.string().guid().nullable().optional(),
+  sourceRunId: z.string().guid().nullable().optional(),
   title: z.string().trim().max(240).nullable().optional(),
   summary: z.string().trim().max(1000).nullable().optional(),
   continuationPolicy: issueThreadInteractionContinuationPolicySchema.optional().default("none"),
   payload: requestConfirmationPayloadSchema,
+});
+
+const createRequestCheckboxConfirmationToolSchema = z.object({
+  issueId: issueIdSchema,
+  idempotencyKey: z.string().trim().max(255).nullable().optional(),
+  sourceCommentId: z.string().guid().nullable().optional(),
+  sourceRunId: z.string().guid().nullable().optional(),
+  title: z.string().trim().max(240).nullable().optional(),
+  summary: z.string().trim().max(1000).nullable().optional(),
+  continuationPolicy: issueThreadInteractionContinuationPolicySchema.optional().default("wake_assignee"),
+  payload: requestCheckboxConfirmationPayloadSchema,
 });
 
 const approvalDecisionSchema = z.object({
@@ -163,7 +176,7 @@ const apiRequestSchema = z.object({
 
 const workspaceRuntimeControlTargetSchema = z.object({
   workspaceCommandId: z.string().min(1).optional().nullable(),
-  runtimeServiceId: z.string().uuid().optional().nullable(),
+  runtimeServiceId: z.string().guid().optional().nullable(),
   serviceIndex: z.number().int().nonnegative().optional().nullable(),
 });
 
@@ -174,7 +187,7 @@ const issueWorkspaceRuntimeControlSchema = z.object({
 
 const waitForIssueWorkspaceServiceSchema = z.object({
   issueId: issueIdSchema,
-  runtimeServiceId: z.string().uuid().optional().nullable(),
+  runtimeServiceId: z.string().guid().optional().nullable(),
   serviceName: z.string().min(1).optional().nullable(),
   timeoutSeconds: z.number().int().positive().max(300).optional(),
 });
@@ -274,7 +287,7 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
     makeTool(
       "paperclipGetHeartbeatContext",
       "Get compact heartbeat context for an issue",
-      z.object({ issueId: issueIdSchema, wakeCommentId: z.string().uuid().optional() }),
+      z.object({ issueId: issueIdSchema, wakeCommentId: z.string().guid().optional() }),
       async ({ issueId, wakeCommentId }) => {
         const qs = wakeCommentId ? `?wakeCommentId=${encodeURIComponent(wakeCommentId)}` : "";
         return client.requestJson("GET", `/issues/${encodeURIComponent(issueId)}/heartbeat-context${qs}`);
@@ -296,7 +309,7 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
     makeTool(
       "paperclipGetComment",
       "Get a specific issue comment by id",
-      z.object({ issueId: issueIdSchema, commentId: z.string().uuid() }),
+      z.object({ issueId: issueIdSchema, commentId: z.string().guid() }),
       async ({ issueId, commentId }) =>
         client.requestJson("GET", `/issues/${encodeURIComponent(issueId)}/comments/${encodeURIComponent(commentId)}`),
     ),
@@ -517,6 +530,18 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
         }),
     ),
     makeTool(
+      "paperclipRequestCheckboxConfirmation",
+      "Create a request_checkbox_confirmation interaction on an issue",
+      createRequestCheckboxConfirmationToolSchema,
+      async ({ issueId, ...body }) =>
+        client.requestJson("POST", `/issues/${encodeURIComponent(issueId)}/interactions`, {
+          body: {
+            kind: "request_checkbox_confirmation",
+            ...body,
+          },
+        }),
+    ),
+    makeTool(
       "paperclipUpsertIssueDocument",
       "Create or update an issue document",
       upsertDocumentToolSchema,
@@ -533,7 +558,7 @@ export function createToolDefinitions(client: PaperclipApiClient): ToolDefinitio
       z.object({
         issueId: issueIdSchema,
         key: documentKeySchema,
-        revisionId: z.string().uuid(),
+        revisionId: z.string().guid(),
       }),
       async ({ issueId, key, revisionId }) =>
         client.requestJson(
